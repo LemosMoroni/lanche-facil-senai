@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel | SENAI Lanche</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<button class="hamburger" id="hamburger" aria-label="Menu">&#9776;</button>
+<div class="sidebar-overlay" id="overlay"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div>
+      <h1>Sistema de<br>Controle de Lanche</h1>
+    </div>
+  </div>
+  <nav>
+    <a href="index.html" class="active"><span class="nav-icon">🏠</span> Painel</a>
+    <a href="alunos.html"><span class="nav-icon">👥</span> Alunos</a>
+    <a href="cartoes.html"><span class="nav-icon">💳</span> Cartões RFID</a>
+    <a href="relatorios.html"><span class="nav-icon">📊</span> Relatórios</a>
+    <a href="configuracoes.html"><span class="nav-icon">⚙️</span> Configurações</a>
+  </nav>
+  <div class="sidebar-footer">SENAI &copy; 2025</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <h2>Painel de Controle</h2>
+    <span class="topbar-info" id="ultima-atualizacao">Carregando...</span>
+  </div>
+
+  <div class="content">
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-icon azul">👥</div>
+        <div>
+          <div class="metric-value" id="total-alunos">—</div>
+          <div class="metric-label">Total de Alunos</div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon verde">✅</div>
+        <div>
+          <div class="metric-value" id="total-retirados">—</div>
+          <div class="metric-label">Lanches Retirados Hoje</div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon vermelho">❌</div>
+        <div>
+          <div class="metric-value" id="total-negados">—</div>
+          <div class="metric-label">Acessos Negados Hoje</div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon laranja">💳</div>
+        <div>
+          <div class="metric-value" id="total-cartoes">—</div>
+          <div class="metric-label">Cartões Cadastrados</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h3>Últimos Acessos</h3>
+        <span style="font-size:0.8rem;color:#888;">Atualiza a cada 5s</span>
+      </div>
+      <div class="section-body" style="padding:0">
+        <div id="tabela-acessos-wrapper">
+          <div class="loading-overlay">
+            <div class="spinner spinner-dark"></div> Carregando registros...
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+  const BASE_URL = () => localStorage.getItem('server_url') || '';
+
+  function toast(msg, tipo = 'info') {
+    const c = document.getElementById('toasts');
+    const t = document.createElement('div');
+    t.className = `toast toast-${tipo}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  function formatarHora(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  async function carregarContadores() {
+    try {
+      const r = await fetch(BASE_URL() + '/api/relatorio/contadores');
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      document.getElementById('total-alunos').textContent   = d.total_alunos   ?? 0;
+      document.getElementById('total-retirados').textContent = d.retirados      ?? 0;
+      document.getElementById('total-negados').textContent   = d.negados        ?? 0;
+      document.getElementById('total-cartoes').textContent   = d.total_cartoes  ?? 0;
+    } catch {
+      // silencioso — mostra erro apenas no primeiro carregamento
+    }
+  }
+
+  async function carregarAcessos() {
+    const wrapper = document.getElementById('tabela-acessos-wrapper');
+    try {
+      const r = await fetch(BASE_URL() + '/api/relatorio/hoje');
+      if (!r.ok) throw new Error();
+      const dados = await r.json();
+
+      if (!dados.length) {
+        wrapper.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <p>Nenhum acesso registrado hoje.</p>
+          </div>`;
+        return;
+      }
+
+      wrapper.innerHTML = `
+        <div class="table-wrapper">
+          <table class="table-responsive">
+            <thead>
+              <tr>
+                <th>Horário</th>
+                <th>Aluno</th>
+                <th>Turma</th>
+                <th>UID</th>
+                <th>Status</th>
+                <th>Motivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dados.map(reg => `
+                <tr>
+                  <td data-label="Horário">${formatarHora(reg.criado_em)}</td>
+                  <td data-label="Aluno">${reg.aluno_nome || '<em>Desconhecido</em>'}</td>
+                  <td data-label="Turma">${reg.aluno_turma || '—'}</td>
+                  <td data-label="UID"><code>${reg.uid}</code></td>
+                  <td data-label="Status">
+                    ${reg.status === 'liberado'
+                      ? '<span class="badge badge-success">✅ Liberado</span>'
+                      : '<span class="badge badge-danger">❌ Negado</span>'}
+                  </td>
+                  <td data-label="Motivo">${reg.motivo || '—'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch {
+      wrapper.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <p>Erro ao carregar registros. Verifique a conexão com o servidor.</p>
+        </div>`;
+    }
+  }
+
+  async function atualizar() {
+    await Promise.all([carregarContadores(), carregarAcessos()]);
+    document.getElementById('ultima-atualizacao').textContent =
+      'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
+  }
+
+  const hamburger = document.getElementById('hamburger');
+  const sidebar   = document.getElementById('sidebar');
+  const overlay   = document.getElementById('overlay');
+
+  function toggleMenu() {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('open');
+  }
+
+  hamburger.addEventListener('click', toggleMenu);
+  overlay.addEventListener('click', toggleMenu);
+
+  atualizar();
+  setInterval(atualizar, 5000);
+</script>
+</body>
+</html>

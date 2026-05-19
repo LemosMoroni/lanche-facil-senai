@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cartões RFID | SENAI Lanche</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<button class="hamburger" id="hamburger" aria-label="Menu">&#9776;</button>
+<div class="sidebar-overlay" id="overlay"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div>
+      <h1>Sistema de<br>Controle de Lanche</h1>
+    </div>
+  </div>
+  <nav>
+    <a href="index.html"><span class="nav-icon">🏠</span> Painel</a>
+    <a href="alunos.html"><span class="nav-icon">👥</span> Alunos</a>
+    <a href="cartoes.html" class="active"><span class="nav-icon">💳</span> Cartões RFID</a>
+    <a href="relatorios.html"><span class="nav-icon">📊</span> Relatórios</a>
+    <a href="configuracoes.html"><span class="nav-icon">⚙️</span> Configurações</a>
+  </nav>
+  <div class="sidebar-footer">SENAI &copy; 2025</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <h2>Cartões RFID</h2>
+  </div>
+
+  <div class="content">
+    <div class="section">
+      <div class="section-header">
+        <h3>Lista de Cartões</h3>
+        <div class="search-bar">
+          <input type="text" class="search-input" id="busca" placeholder="Buscar cartão ou aluno..." oninput="filtrar()" />
+          <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo Cartão</button>
+        </div>
+      </div>
+      <div class="section-body" style="padding:0">
+        <div id="tabela-wrapper">
+          <div class="loading-overlay">
+            <div class="spinner spinner-dark"></div> Carregando cartões...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Modal Cadastro -->
+<div class="modal-overlay" id="modal-cartao">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Novo Cartão RFID</h3>
+      <button class="modal-close" onclick="fecharModalCartao()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <form id="form-cartao" onsubmit="salvarCartao(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="cartao-numero">Número do Cartão *</label>
+            <input type="text" id="cartao-numero" class="form-control" required placeholder="Ex: 001" />
+          </div>
+          <div class="form-group">
+            <label for="cartao-uid">UID do Cartão *</label>
+            <input type="text" id="cartao-uid" class="form-control" required
+              placeholder="Aproxime o cartão ao leitor USB"
+              title="Aproxime o cartão ao leitor RFID USB — ele funciona como teclado" />
+            <small id="uid-hint" style="color:#888;font-size:0.78rem">Clique aqui e aproxime o cartão ao leitor RFID</small>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModalCartao()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-salvar-cartao">Cadastrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Vincular Aluno -->
+<div class="modal-overlay" id="modal-vincular">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Vincular Aluno ao Cartão</h3>
+      <button class="modal-close" onclick="fecharModalVincular()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:16px;color:#555">Selecione o aluno para vincular ao cartão <strong id="vincular-cartao-uid"></strong>:</p>
+      <div class="form-group">
+        <label for="select-aluno">Aluno *</label>
+        <select id="select-aluno" class="form-control" required>
+          <option value="">Carregando alunos...</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModalVincular()">Cancelar</button>
+        <button type="button" class="btn btn-success" id="btn-confirmar-vincular" onclick="confirmarVincular()">Vincular</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Histórico -->
+<div class="modal-overlay" id="modal-historico">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h3>Histórico de Vínculos</h3>
+      <button class="modal-close" onclick="fecharModalHistorico()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div id="historico-content"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="fecharModalHistorico()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmação Desvincular -->
+<div class="modal-overlay" id="modal-confirmar-desv">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Confirmar Desvinculação</h3>
+      <button class="modal-close" onclick="fecharConfirmarDesv()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p>Deseja desvincular o aluno <strong id="desv-aluno-nome"></strong> do cartão <strong id="desv-cartao-uid"></strong>?</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="fecharConfirmarDesv()">Cancelar</button>
+      <button class="btn btn-danger" id="btn-confirmar-desv">Desvincular</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+  const BASE_URL = () => localStorage.getItem('server_url') || '';
+  let cartoes = [];
+  let cartaoAtualId = null;
+
+  function toast(msg, tipo = 'info') {
+    const c = document.getElementById('toasts');
+    const t = document.createElement('div');
+    t.className = `toast toast-${tipo}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  function setCarregando(btn, label, carregando) {
+    btn.disabled = carregando;
+    btn.innerHTML = carregando ? `<div class="spinner"></div> ${label}` : label;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function formatarData(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('pt-BR');
+  }
+
+  async function carregarCartoes() {
+    const wrapper = document.getElementById('tabela-wrapper');
+    wrapper.innerHTML = `<div class="loading-overlay"><div class="spinner spinner-dark"></div> Carregando cartões...</div>`;
+    try {
+      const r = await fetch(BASE_URL() + '/api/cartoes');
+      if (!r.ok) throw new Error('Erro ' + r.status);
+      cartoes = await r.json();
+      renderizar(cartoes);
+    } catch (e) {
+      wrapper.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <p>Erro ao carregar cartões: ${e.message}</p>
+        </div>`;
+    }
+  }
+
+  function renderizar(lista) {
+    const wrapper = document.getElementById('tabela-wrapper');
+    if (!lista.length) {
+      wrapper.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">💳</div>
+          <p>Nenhum cartão cadastrado.</p>
+        </div>`;
+      return;
+    }
+
+    wrapper.innerHTML = `
+      <div class="table-wrapper">
+        <table class="table-responsive">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>UID</th>
+              <th>Aluno Vinculado</th>
+              <th>Turma</th>
+              <th>Status</th>
+              <th>Histórico</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lista.map(c => {
+              const hist = (c.historico || []);
+              return `
+                <tr>
+                  <td data-label="Número">${escHtml(c.numero)}</td>
+                  <td data-label="UID"><code>${escHtml(c.uid)}</code></td>
+                  <td data-label="Aluno">${c.aluno_nome ? escHtml(c.aluno_nome) : '<em style="color:#aaa">Sem aluno</em>'}</td>
+                  <td data-label="Turma">${c.aluno_turma ? `<span class="badge badge-info">${escHtml(c.aluno_turma)}</span>` : '—'}</td>
+                  <td data-label="Status">
+                    ${c.aluno_id
+                      ? '<span class="badge badge-success">✅ Vinculado</span>'
+                      : '<span class="badge badge-secondary">🔓 Livre</span>'}
+                  </td>
+                  <td data-label="Histórico">
+                    ${hist.length
+                      ? `<button class="btn btn-outline btn-sm" onclick="verHistorico(${c.id})">📋 Ver (${hist.length})</button>`
+                      : '<em style="color:#aaa;font-size:0.8rem">Sem histórico</em>'}
+                  </td>
+                  <td data-label="Ações" class="td-actions">
+                    ${c.aluno_id
+                      ? `<button class="btn btn-danger btn-sm" onclick="abrirDesv(${c.id}, '${escHtml(c.uid)}', '${escHtml(c.aluno_nome || '')}')">🔓 Desvincular</button>`
+                      : `<button class="btn btn-success btn-sm" onclick="abrirVincular(${c.id}, '${escHtml(c.uid)}')">🔗 Vincular</button>`}
+                  </td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function filtrar() {
+    const q = document.getElementById('busca').value.toLowerCase();
+    renderizar(cartoes.filter(c =>
+      c.uid.toLowerCase().includes(q) ||
+      c.numero.toLowerCase().includes(q) ||
+      (c.aluno_nome || '').toLowerCase().includes(q)
+    ));
+  }
+
+  // ── Polling UID desconhecido ───────────────────────────────────────────────
+  let pollingCartao = null;
+
+  function iniciarPollingUID() {
+    pararPollingUID();
+    pollingCartao = setInterval(async () => {
+      const campo = document.getElementById('cartao-uid');
+      if (campo.value.trim()) return; // não sobrescreve se já preenchido
+      try {
+        const r = await fetch(BASE_URL() + '/api/ultimo-desconhecido');
+        if (!r.ok) return;
+        const { uid } = await r.json();
+        if (!uid) return;
+        campo.value = uid;
+        campo.style.transition = 'background 0.3s';
+        campo.style.background = '#e8f5e9';
+        campo.style.borderColor = '#4caf50';
+        setTimeout(() => { campo.style.background = ''; campo.style.borderColor = ''; }, 2000);
+        document.getElementById('uid-hint').textContent = '✔ UID capturado do leitor RFID';
+        document.getElementById('uid-hint').style.color = '#4caf50';
+        toast('UID capturado automaticamente!', 'success');
+        fetch(BASE_URL() + '/api/ultimo-desconhecido', { method: 'DELETE' });
+        pararPollingUID();
+      } catch {}
+    }, 1500);
+  }
+
+  function pararPollingUID() {
+    if (pollingCartao) { clearInterval(pollingCartao); pollingCartao = null; }
+  }
+
+  // ── Cadastro ───────────────────────────────────────────────────────────────
+  function abrirModalNovo() {
+    document.getElementById('cartao-numero').value = '';
+    document.getElementById('cartao-uid').value = '';
+    document.getElementById('uid-hint').textContent = '⬤ Aguardando leitura — aproxime o cartão no ESP8266 ou leitor USB';
+    document.getElementById('uid-hint').style.color = '#2196f3';
+    document.getElementById('modal-cartao').classList.add('active');
+    setTimeout(() => document.getElementById('cartao-uid').focus(), 100);
+    iniciarPollingUID();
+  }
+
+  function fecharModalCartao() {
+    document.getElementById('modal-cartao').classList.remove('active');
+    pararPollingUID();
+    document.getElementById('uid-hint').textContent = 'Clique aqui e aproxime o cartão ao leitor RFID';
+    document.getElementById('uid-hint').style.color = '#888';
+  }
+
+  async function salvarCartao(e) {
+    e.preventDefault();
+    const numero = document.getElementById('cartao-numero').value.trim();
+    const uid    = document.getElementById('cartao-uid').value.trim();
+    const btn    = document.getElementById('btn-salvar-cartao');
+    setCarregando(btn, 'Cadastrar', true);
+    try {
+      const r = await fetch(BASE_URL() + '/api/cartoes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ numero, uid })
+      });
+      const dados = await r.json();
+      if (!r.ok) throw new Error(dados.erro || 'Erro ao cadastrar.');
+      toast('Cartão cadastrado com sucesso!', 'success');
+      fecharModalCartao();
+      await carregarCartoes();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setCarregando(btn, 'Cadastrar', false);
+    }
+  }
+
+  // ── Vincular ───────────────────────────────────────────────────────────────
+  async function abrirVincular(id, uid) {
+    cartaoAtualId = id;
+    document.getElementById('vincular-cartao-uid').textContent = uid;
+    document.getElementById('modal-vincular').classList.add('active');
+    const sel = document.getElementById('select-aluno');
+    sel.innerHTML = '<option value="">Carregando alunos...</option>';
+    sel.disabled = true;
+    try {
+      const r = await fetch(BASE_URL() + '/api/alunos');
+      const alunos = await r.json();
+      if (!alunos.length) {
+        sel.innerHTML = '<option value="">Nenhum aluno cadastrado</option>';
+      } else {
+        sel.innerHTML = '<option value="">Selecione um aluno...</option>' +
+          alunos.map(a => `<option value="${a.id}">${escHtml(a.nome)} — ${escHtml(a.turma)}</option>`).join('');
+        sel.disabled = false;
+      }
+    } catch {
+      sel.innerHTML = '<option value="">Erro ao carregar alunos</option>';
+    }
+  }
+
+  function fecharModalVincular() {
+    document.getElementById('modal-vincular').classList.remove('active');
+    cartaoAtualId = null;
+  }
+
+  async function confirmarVincular() {
+    const aluno_id = document.getElementById('select-aluno').value;
+    if (!aluno_id) { toast('Selecione um aluno.', 'warning'); return; }
+    const btn = document.getElementById('btn-confirmar-vincular');
+    setCarregando(btn, 'Vincular', true);
+    try {
+      const r = await fetch(`${BASE_URL()}/api/cartoes/${cartaoAtualId}/vincular`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aluno_id: parseInt(aluno_id) })
+      });
+      const dados = await r.json();
+      if (!r.ok) throw new Error(dados.erro || 'Erro ao vincular.');
+      toast('Cartão vinculado com sucesso!', 'success');
+      fecharModalVincular();
+      await carregarCartoes();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setCarregando(btn, 'Vincular', false);
+    }
+  }
+
+  // ── Desvincular ────────────────────────────────────────────────────────────
+  function abrirDesv(id, uid, alunoNome) {
+    cartaoAtualId = id;
+    document.getElementById('desv-aluno-nome').textContent = alunoNome;
+    document.getElementById('desv-cartao-uid').textContent = uid;
+    document.getElementById('btn-confirmar-desv').onclick = executarDesv;
+    document.getElementById('modal-confirmar-desv').classList.add('active');
+  }
+
+  function fecharConfirmarDesv() {
+    document.getElementById('modal-confirmar-desv').classList.remove('active');
+    cartaoAtualId = null;
+  }
+
+  async function executarDesv() {
+    const btn = document.getElementById('btn-confirmar-desv');
+    setCarregando(btn, 'Desvincular', true);
+    try {
+      const r = await fetch(`${BASE_URL()}/api/cartoes/${cartaoAtualId}/desvincular`, {
+        method: 'PUT'
+      });
+      const dados = await r.json();
+      if (!r.ok) throw new Error(dados.erro || 'Erro ao desvincular.');
+      toast('Cartão desvinculado com sucesso!', 'success');
+      fecharConfirmarDesv();
+      await carregarCartoes();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setCarregando(btn, 'Desvincular', false);
+    }
+  }
+
+  // ── Histórico ──────────────────────────────────────────────────────────────
+  function verHistorico(id) {
+    const cartao = cartoes.find(c => c.id === id);
+    if (!cartao) return;
+    const hist = cartao.historico || [];
+    const content = document.getElementById('historico-content');
+    if (!hist.length) {
+      content.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>Sem histórico.</p></div>`;
+    } else {
+      content.innerHTML = `
+        <p style="margin-bottom:12px;color:#555">Cartão UID: <strong>${escHtml(cartao.uid)}</strong></p>
+        <div class="historico-list open">
+          ${hist.map(h => `
+            <div class="historico-item">
+              <span>${h.acao === 'vinculado'
+                ? `<span class="badge badge-success">🔗 Vinculado</span>`
+                : `<span class="badge badge-danger">🔓 Desvinculado</span>`}
+                ${h.aluno_nome ? escHtml(h.aluno_nome) : '—'}
+              </span>
+              <span style="color:#888;font-size:0.78rem">${formatarData(h.criado_em)}</span>
+            </div>`).join('')}
+        </div>`;
+    }
+    document.getElementById('modal-historico').classList.add('active');
+  }
+
+  function fecharModalHistorico() {
+    document.getElementById('modal-historico').classList.remove('active');
+  }
+
+  // ── Setup ──────────────────────────────────────────────────────────────────
+  const hamburger = document.getElementById('hamburger');
+  const sidebar   = document.getElementById('sidebar');
+  const overlay   = document.getElementById('overlay');
+  function toggleMenu() {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('open');
+  }
+  hamburger.addEventListener('click', toggleMenu);
+  overlay.addEventListener('click', toggleMenu);
+
+  ['modal-cartao','modal-vincular','modal-historico','modal-confirmar-desv'].forEach(id => {
+    document.getElementById(id).addEventListener('click', e => {
+      if (e.target === e.currentTarget) e.currentTarget.classList.remove('active');
+    });
+  });
+
+  carregarCartoes();
+</script>
+</body>
+</html>

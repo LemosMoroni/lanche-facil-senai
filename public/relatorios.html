@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relatórios | SENAI Lanche</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<button class="hamburger" id="hamburger" aria-label="Menu">&#9776;</button>
+<div class="sidebar-overlay" id="overlay"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div>
+      <h1>Sistema de<br>Controle de Lanche</h1>
+    </div>
+  </div>
+  <nav>
+    <a href="index.html"><span class="nav-icon">🏠</span> Painel</a>
+    <a href="alunos.html"><span class="nav-icon">👥</span> Alunos</a>
+    <a href="cartoes.html"><span class="nav-icon">💳</span> Cartões RFID</a>
+    <a href="relatorios.html" class="active"><span class="nav-icon">📊</span> Relatórios</a>
+    <a href="configuracoes.html"><span class="nav-icon">⚙️</span> Configurações</a>
+  </nav>
+  <div class="sidebar-footer">SENAI &copy; 2025</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <h2>Relatórios do Dia</h2>
+  </div>
+
+  <div class="content">
+
+    <div class="metrics-grid" style="margin-bottom:24px">
+      <div class="metric-card">
+        <div class="metric-icon verde">✅</div>
+        <div>
+          <div class="metric-value" id="cnt-retirados">—</div>
+          <div class="metric-label">Retirados Hoje</div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon vermelho">❌</div>
+        <div>
+          <div class="metric-value" id="cnt-negados">—</div>
+          <div class="metric-label">Acessos Negados</div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon azul">👥</div>
+        <div>
+          <div class="metric-value" id="cnt-alunos">—</div>
+          <div class="metric-label">Total de Alunos</div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon laranja">💳</div>
+        <div>
+          <div class="metric-value" id="cnt-cartoes">—</div>
+          <div class="metric-label">Total de Cartões</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h3>Registros de Hoje</h3>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="exportarCSV()">⬇️ Exportar CSV</button>
+          <button class="btn btn-danger" onclick="abrirReset()">🗑️ Resetar Registros</button>
+        </div>
+      </div>
+      <div class="section-body" style="padding:0">
+        <div id="tabela-wrapper">
+          <div class="loading-overlay">
+            <div class="spinner spinner-dark"></div> Carregando registros...
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Modal Confirmação Reset -->
+<div class="modal-overlay" id="modal-reset">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Confirmar Reset</h3>
+      <button class="modal-close" onclick="fecharReset()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p>Tem certeza que deseja <strong>apagar todos os registros de hoje</strong>?</p>
+      <p style="color:#888;font-size:0.85rem;margin-top:8px;">Esta ação não pode ser desfeita.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="fecharReset()">Cancelar</button>
+      <button class="btn btn-danger" id="btn-confirmar-reset" onclick="executarReset()">Resetar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+  const BASE_URL = () => localStorage.getItem('server_url') || '';
+  let registros = [];
+
+  function toast(msg, tipo = 'info') {
+    const c = document.getElementById('toasts');
+    const t = document.createElement('div');
+    t.className = `toast toast-${tipo}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  function setCarregando(btn, label, carregando) {
+    btn.disabled = carregando;
+    btn.innerHTML = carregando ? `<div class="spinner"></div> ${label}` : label;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function formatarHora(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  async function carregarTudo() {
+    await Promise.all([carregarContadores(), carregarRegistros()]);
+  }
+
+  async function carregarContadores() {
+    try {
+      const r = await fetch(BASE_URL() + '/api/relatorio/contadores');
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      document.getElementById('cnt-retirados').textContent = d.retirados     ?? 0;
+      document.getElementById('cnt-negados').textContent   = d.negados       ?? 0;
+      document.getElementById('cnt-alunos').textContent    = d.total_alunos  ?? 0;
+      document.getElementById('cnt-cartoes').textContent   = d.total_cartoes ?? 0;
+    } catch {
+      // silencioso
+    }
+  }
+
+  async function carregarRegistros() {
+    const wrapper = document.getElementById('tabela-wrapper');
+    wrapper.innerHTML = `<div class="loading-overlay"><div class="spinner spinner-dark"></div> Carregando registros...</div>`;
+    try {
+      const r = await fetch(BASE_URL() + '/api/relatorio/hoje');
+      if (!r.ok) throw new Error('Erro ' + r.status);
+      registros = await r.json();
+      renderizar();
+    } catch (e) {
+      wrapper.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <p>Erro ao carregar registros: ${e.message}</p>
+        </div>`;
+    }
+  }
+
+  function renderizar() {
+    const wrapper = document.getElementById('tabela-wrapper');
+    if (!registros.length) {
+      wrapper.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <p>Nenhum registro encontrado para hoje.</p>
+        </div>`;
+      return;
+    }
+    wrapper.innerHTML = `
+      <div class="table-wrapper">
+        <table class="table-responsive">
+          <thead>
+            <tr>
+              <th>Horário</th>
+              <th>Aluno</th>
+              <th>Turma</th>
+              <th>UID</th>
+              <th>Status</th>
+              <th>Motivo</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${registros.map(reg => `
+              <tr>
+                <td data-label="Horário">${formatarHora(reg.criado_em)}</td>
+                <td data-label="Aluno">${reg.aluno_nome ? escHtml(reg.aluno_nome) : '<em>Desconhecido</em>'}</td>
+                <td data-label="Turma">${reg.aluno_turma ? `<span class="badge badge-info">${escHtml(reg.aluno_turma)}</span>` : '—'}</td>
+                <td data-label="UID"><code>${escHtml(reg.uid)}</code></td>
+                <td data-label="Status">
+                  ${reg.status === 'liberado'
+                    ? '<span class="badge badge-success">✅ Liberado</span>'
+                    : '<span class="badge badge-danger">❌ Negado</span>'}
+                </td>
+                <td data-label="Motivo">${reg.motivo ? escHtml(reg.motivo) : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function exportarCSV() {
+    if (!registros.length) {
+      toast('Não há registros para exportar.', 'warning');
+      return;
+    }
+    const cabecalho = ['ID','Horário','Aluno','Turma','UID','Status','Motivo'];
+    const linhas = registros.map(r => [
+      r.id,
+      r.criado_em ? new Date(r.criado_em).toLocaleString('pt-BR') : '',
+      r.aluno_nome || '',
+      r.aluno_turma || '',
+      r.uid,
+      r.status,
+      r.motivo || ''
+    ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(','));
+
+    const csv = [cabecalho.join(','), ...linhas].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `relatorio_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('CSV exportado com sucesso!', 'success');
+  }
+
+  function abrirReset() {
+    document.getElementById('modal-reset').classList.add('active');
+  }
+
+  function fecharReset() {
+    document.getElementById('modal-reset').classList.remove('active');
+  }
+
+  async function executarReset() {
+    const btn = document.getElementById('btn-confirmar-reset');
+    setCarregando(btn, 'Resetar', true);
+    try {
+      const r = await fetch(BASE_URL() + '/api/relatorio/reset', { method: 'POST' });
+      const dados = await r.json();
+      if (!r.ok) throw new Error(dados.erro || 'Erro ao resetar.');
+      toast(dados.mensagem || 'Registros resetados!', 'success');
+      fecharReset();
+      await carregarTudo();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setCarregando(btn, 'Resetar', false);
+    }
+  }
+
+  const hamburger = document.getElementById('hamburger');
+  const sidebar   = document.getElementById('sidebar');
+  const overlay   = document.getElementById('overlay');
+  function toggleMenu() {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('open');
+  }
+  hamburger.addEventListener('click', toggleMenu);
+  overlay.addEventListener('click', toggleMenu);
+
+  document.getElementById('modal-reset').addEventListener('click', e => {
+    if (e.target === e.currentTarget) fecharReset();
+  });
+
+  carregarTudo();
+</script>
+</body>
+</html>

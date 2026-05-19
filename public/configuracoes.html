@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configurações | SENAI Lanche</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<button class="hamburger" id="hamburger" aria-label="Menu">&#9776;</button>
+<div class="sidebar-overlay" id="overlay"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div>
+      <h1>Sistema de<br>Controle de Lanche</h1>
+    </div>
+  </div>
+  <nav>
+    <a href="index.html"><span class="nav-icon">🏠</span> Painel</a>
+    <a href="alunos.html"><span class="nav-icon">👥</span> Alunos</a>
+    <a href="cartoes.html"><span class="nav-icon">💳</span> Cartões RFID</a>
+    <a href="relatorios.html"><span class="nav-icon">📊</span> Relatórios</a>
+    <a href="configuracoes.html" class="active"><span class="nav-icon">⚙️</span> Configurações</a>
+  </nav>
+  <div class="sidebar-footer">SENAI &copy; 2025</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <h2>Configurações</h2>
+  </div>
+
+  <div class="content">
+
+    <div class="section">
+      <div class="section-header">
+        <h3>🌐 Endereço do Servidor</h3>
+      </div>
+      <div class="section-body">
+        <p style="color:#555;margin-bottom:16px;font-size:0.9rem">
+          Configure o endereço IP e porta do servidor Node.js. Útil quando o frontend
+          está sendo acessado por outro dispositivo (ex: celular na mesma rede Wi-Fi).
+          <br>Deixe em branco para usar o mesmo servidor que está servindo esta página
+          (<code>window.location.origin</code>).
+        </p>
+
+        <form onsubmit="salvarServidor(event)">
+          <div class="form-group">
+            <label for="server-url">URL do Servidor</label>
+            <input
+              type="text"
+              id="server-url"
+              class="form-control"
+              placeholder="Ex: http://192.168.1.100:3000 (deixe vazio para automático)"
+              style="max-width:480px"
+            />
+            <small style="color:#888;font-size:0.78rem">
+              Formato: <code>http://IP:PORTA</code> — sem barra no final
+            </small>
+          </div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+            <button type="submit" class="btn btn-primary">💾 Salvar</button>
+            <button type="button" class="btn btn-secondary" onclick="limparServidor()">🗑️ Limpar (usar padrão)</button>
+            <button type="button" class="btn btn-outline" onclick="testarConexao()">🔌 Testar Conexão</button>
+          </div>
+        </form>
+
+        <div id="status-conexao" style="margin-top:20px"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h3>ℹ️ Sobre o Sistema</h3>
+      </div>
+      <div class="section-body">
+        <table style="border-collapse:collapse;font-size:0.9rem;width:100%;max-width:480px">
+          <tbody>
+            <tr>
+              <td style="padding:8px 0;color:#888;width:160px;font-weight:600">Sistema</td>
+              <td style="padding:8px 0">SENAI — Controle de Lanche RFID</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;color:#888;font-weight:600">Versão</td>
+              <td style="padding:8px 0">1.0.0</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;color:#888;font-weight:600">Backend</td>
+              <td style="padding:8px 0">Node.js + Express + SQLite</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;color:#888;font-weight:600">Hardware</td>
+              <td style="padding:8px 0">ESP8266 + Módulo RFID RC522</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;color:#888;font-weight:600">Porta padrão</td>
+              <td style="padding:8px 0">3000</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h3>⚙️ Configuração do ESP8266</h3>
+      </div>
+      <div class="section-body">
+        <p style="color:#555;margin-bottom:12px;font-size:0.9rem">
+          No firmware do ESP8266, configure os parâmetros abaixo para que o leitor
+          se comunique com o servidor:
+        </p>
+        <div style="background:var(--cinza-bg);border-radius:8px;padding:16px;font-family:monospace;font-size:0.85rem;line-height:1.8;word-break:break-all">
+          <div><span style="color:#888">// Wi-Fi</span></div>
+          <div>const char* ssid = <strong id="conf-ssid">"SUA_REDE_WIFI"</strong>;</div>
+          <div>const char* password = <strong>"SUA_SENHA_WIFI"</strong>;</div>
+          <br>
+          <div><span style="color:#888">// Servidor</span></div>
+          <div>const char* serverUrl = <strong id="conf-url">"http://&lt;IP_DO_SERVIDOR&gt;:3000/verificar"</strong>;</div>
+        </div>
+        <p style="color:#888;font-size:0.8rem;margin-top:10px">
+          Substitua <code>&lt;IP_DO_SERVIDOR&gt;</code> pelo IP da máquina que roda o Node.js.
+          Certifique-se de que o ESP8266 e o servidor estão na mesma rede.
+        </p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+  const BASE_URL = () => localStorage.getItem('server_url') || '';
+
+  function toast(msg, tipo = 'info') {
+    const c = document.getElementById('toasts');
+    const t = document.createElement('div');
+    t.className = `toast toast-${tipo}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  function setCarregando(btn, label, carregando) {
+    btn.disabled = carregando;
+    btn.innerHTML = carregando ? `<div class="spinner"></div> ${label}` : label;
+  }
+
+  function carregarValorSalvo() {
+    const salvo = localStorage.getItem('server_url') || '';
+    document.getElementById('server-url').value = salvo;
+  }
+
+  function salvarServidor(e) {
+    e.preventDefault();
+    let url = document.getElementById('server-url').value.trim();
+    if (url.endsWith('/')) url = url.slice(0, -1);
+    if (url && !/^https?:\/\//.test(url)) {
+      toast('URL inválida. Use o formato http://IP:PORTA', 'error');
+      return;
+    }
+    localStorage.setItem('server_url', url);
+    toast('Configuração salva!', 'success');
+    atualizarConfEsp();
+  }
+
+  function limparServidor() {
+    localStorage.removeItem('server_url');
+    document.getElementById('server-url').value = '';
+    document.getElementById('status-conexao').innerHTML = '';
+    toast('Configuração removida. Usando servidor padrão.', 'info');
+    atualizarConfEsp();
+  }
+
+  async function testarConexao() {
+    const btn = document.querySelector('[onclick="testarConexao()"]');
+    const statusDiv = document.getElementById('status-conexao');
+    setCarregando(btn, '🔌 Testar Conexão', true);
+    statusDiv.innerHTML = `<div class="loading-overlay" style="padding:12px 0;justify-content:flex-start;gap:8px"><div class="spinner spinner-dark"></div> Testando conexão...</div>`;
+    try {
+      const r = await fetch(BASE_URL() + '/api/relatorio/contadores');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const dados = await r.json();
+      statusDiv.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#d4edda;border-radius:8px;color:#155724">
+          <span style="font-size:1.3rem">✅</span>
+          <div>
+            <strong>Conexão OK!</strong>
+            <div style="font-size:0.82rem;margin-top:2px">
+              ${dados.total_alunos} aluno(s) · ${dados.total_cartoes} cartão(ões)
+            </div>
+          </div>
+        </div>`;
+    } catch (err) {
+      statusDiv.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:#f8d7da;border-radius:8px;color:#721c24">
+          <span style="font-size:1.3rem">❌</span>
+          <div>
+            <strong>Falha na conexão</strong>
+            <div style="font-size:0.82rem;margin-top:2px">${err.message}</div>
+          </div>
+        </div>`;
+    } finally {
+      setCarregando(btn, '🔌 Testar Conexão', false);
+    }
+  }
+
+  function atualizarConfEsp() {
+    const url = BASE_URL() || 'http://<IP_DO_SERVIDOR>:3000';
+    document.getElementById('conf-url').textContent = `"${url}/verificar"`;
+  }
+
+  const hamburger = document.getElementById('hamburger');
+  const sidebar   = document.getElementById('sidebar');
+  const overlay   = document.getElementById('overlay');
+  function toggleMenu() {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('open');
+  }
+  hamburger.addEventListener('click', toggleMenu);
+  overlay.addEventListener('click', toggleMenu);
+
+  carregarValorSalvo();
+  atualizarConfEsp();
+</script>
+</body>
+</html>

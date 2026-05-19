@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alunos | SENAI Lanche</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<button class="hamburger" id="hamburger" aria-label="Menu">&#9776;</button>
+<div class="sidebar-overlay" id="overlay"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div>
+      <h1>Sistema de<br>Controle de Lanche</h1>
+    </div>
+  </div>
+  <nav>
+    <a href="index.html"><span class="nav-icon">🏠</span> Painel</a>
+    <a href="alunos.html" class="active"><span class="nav-icon">👥</span> Alunos</a>
+    <a href="cartoes.html"><span class="nav-icon">💳</span> Cartões RFID</a>
+    <a href="relatorios.html"><span class="nav-icon">📊</span> Relatórios</a>
+    <a href="configuracoes.html"><span class="nav-icon">⚙️</span> Configurações</a>
+  </nav>
+  <div class="sidebar-footer">SENAI &copy; 2025</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <h2>Gerenciar Alunos</h2>
+  </div>
+
+  <div class="content">
+    <div class="section">
+      <div class="section-header">
+        <h3>Lista de Alunos</h3>
+        <div class="search-bar">
+          <input type="text" class="search-input" id="busca" placeholder="Buscar aluno..." oninput="filtrar()" />
+          <button class="btn btn-primary" onclick="abrirModalNovo()">+ Novo Aluno</button>
+        </div>
+      </div>
+      <div class="section-body" style="padding:0">
+        <div id="tabela-wrapper">
+          <div class="loading-overlay">
+            <div class="spinner spinner-dark"></div> Carregando alunos...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Modal Cadastro / Edição -->
+<div class="modal-overlay" id="modal-aluno">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-titulo">Novo Aluno</h3>
+      <button class="modal-close" onclick="fecharModal()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <form id="form-aluno" onsubmit="salvarAluno(event)">
+        <input type="hidden" id="aluno-id" />
+        <div class="form-row">
+          <div class="form-group">
+            <label for="aluno-nome">Nome Completo *</label>
+            <input type="text" id="aluno-nome" class="form-control" required placeholder="Ex: João da Silva" />
+          </div>
+          <div class="form-group">
+            <label for="aluno-turma">Turma *</label>
+            <input type="text" id="aluno-turma" class="form-control" required placeholder="Ex: DS2M" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-salvar">
+            <span id="btn-salvar-label">Salvar</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmação Exclusão -->
+<div class="modal-overlay" id="modal-confirmar">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Confirmar Exclusão</h3>
+      <button class="modal-close" onclick="fecharConfirmar()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p>Tem certeza que deseja remover o aluno <strong id="confirmar-nome"></strong>?</p>
+      <p style="color:#888;font-size:0.85rem;margin-top:8px;">Esta ação não pode ser desfeita.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="fecharConfirmar()">Cancelar</button>
+      <button class="btn btn-danger" id="btn-confirmar-del">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+  const BASE_URL = () => localStorage.getItem('server_url') || '';
+  let alunos = [];
+
+  function toast(msg, tipo = 'info') {
+    const c = document.getElementById('toasts');
+    const t = document.createElement('div');
+    t.className = `toast toast-${tipo}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
+  function setCarregando(btn, label, carregando) {
+    btn.disabled = carregando;
+    btn.innerHTML = carregando
+      ? `<div class="spinner"></div> ${label}`
+      : label;
+  }
+
+  async function carregarAlunos() {
+    const wrapper = document.getElementById('tabela-wrapper');
+    wrapper.innerHTML = `<div class="loading-overlay"><div class="spinner spinner-dark"></div> Carregando alunos...</div>`;
+    try {
+      const r = await fetch(BASE_URL() + '/api/alunos');
+      if (!r.ok) throw new Error('Erro ' + r.status);
+      alunos = await r.json();
+      renderizar(alunos);
+    } catch (e) {
+      wrapper.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <p>Erro ao carregar alunos: ${e.message}</p>
+        </div>`;
+    }
+  }
+
+  function renderizar(lista) {
+    const wrapper = document.getElementById('tabela-wrapper');
+    if (!lista.length) {
+      wrapper.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">👥</div>
+          <p>Nenhum aluno cadastrado.</p>
+        </div>`;
+      return;
+    }
+    wrapper.innerHTML = `
+      <div class="table-wrapper">
+        <table class="table-responsive">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Nome</th>
+              <th>Turma</th>
+              <th>Cadastrado em</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lista.map(a => `
+              <tr>
+                <td data-label="ID">${a.id}</td>
+                <td data-label="Nome">${escHtml(a.nome)}</td>
+                <td data-label="Turma"><span class="badge badge-info">${escHtml(a.turma)}</span></td>
+                <td data-label="Cadastrado em">${formatarData(a.criado_em)}</td>
+                <td data-label="Ações" class="td-actions">
+                  <button class="btn btn-warning btn-sm" onclick="abrirModalEditar(${a.id})">✏️ Editar</button>
+                  <button class="btn btn-danger btn-sm" onclick="confirmarDeletar(${a.id}, '${escAttr(a.nome)}')">🗑️ Remover</button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function filtrar() {
+    const q = document.getElementById('busca').value.toLowerCase();
+    renderizar(alunos.filter(a =>
+      a.nome.toLowerCase().includes(q) || a.turma.toLowerCase().includes(q)
+    ));
+  }
+
+  function abrirModalNovo() {
+    document.getElementById('modal-titulo').textContent = 'Novo Aluno';
+    document.getElementById('aluno-id').value = '';
+    document.getElementById('aluno-nome').value = '';
+    document.getElementById('aluno-turma').value = '';
+    document.getElementById('btn-salvar-label').textContent = 'Salvar';
+    document.getElementById('modal-aluno').classList.add('active');
+  }
+
+  function abrirModalEditar(id) {
+    const a = alunos.find(x => x.id === id);
+    if (!a) return;
+    document.getElementById('modal-titulo').textContent = 'Editar Aluno';
+    document.getElementById('aluno-id').value = a.id;
+    document.getElementById('aluno-nome').value = a.nome;
+    document.getElementById('aluno-turma').value = a.turma;
+    document.getElementById('btn-salvar-label').textContent = 'Atualizar';
+    document.getElementById('modal-aluno').classList.add('active');
+  }
+
+  function fecharModal() {
+    document.getElementById('modal-aluno').classList.remove('active');
+  }
+
+  async function salvarAluno(e) {
+    e.preventDefault();
+    const id    = document.getElementById('aluno-id').value;
+    const nome  = document.getElementById('aluno-nome').value.trim();
+    const turma = document.getElementById('aluno-turma').value.trim();
+    const btn   = document.getElementById('btn-salvar');
+    const label = id ? 'Atualizar' : 'Salvar';
+
+    setCarregando(btn, label, true);
+    try {
+      const url    = id ? `${BASE_URL()}/api/alunos/${id}` : `${BASE_URL()}/api/alunos`;
+      const method = id ? 'PUT' : 'POST';
+      const r = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, turma })
+      });
+      const dados = await r.json();
+      if (!r.ok) throw new Error(dados.erro || 'Erro ao salvar.');
+      toast(id ? 'Aluno atualizado!' : 'Aluno cadastrado!', 'success');
+      fecharModal();
+      await carregarAlunos();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setCarregando(btn, label, false);
+    }
+  }
+
+  function confirmarDeletar(id, nome) {
+    document.getElementById('confirmar-nome').textContent = nome;
+    const btn = document.getElementById('btn-confirmar-del');
+    btn.onclick = () => deletarAluno(id);
+    document.getElementById('modal-confirmar').classList.add('active');
+  }
+
+  function fecharConfirmar() {
+    document.getElementById('modal-confirmar').classList.remove('active');
+  }
+
+  async function deletarAluno(id) {
+    const btn = document.getElementById('btn-confirmar-del');
+    setCarregando(btn, 'Excluir', true);
+    try {
+      const r = await fetch(`${BASE_URL()}/api/alunos/${id}`, { method: 'DELETE' });
+      const dados = await r.json();
+      if (!r.ok) throw new Error(dados.erro || 'Erro ao remover.');
+      toast('Aluno removido com sucesso!', 'success');
+      fecharConfirmar();
+      await carregarAlunos();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setCarregando(btn, 'Excluir', false);
+    }
+  }
+
+  function formatarData(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('pt-BR');
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function escAttr(s) {
+    return String(s).replace(/'/g,"\\'");
+  }
+
+  const hamburger = document.getElementById('hamburger');
+  const sidebar   = document.getElementById('sidebar');
+  const overlay   = document.getElementById('overlay');
+  function toggleMenu() {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('open');
+  }
+  hamburger.addEventListener('click', toggleMenu);
+  overlay.addEventListener('click', toggleMenu);
+
+  document.getElementById('modal-aluno').addEventListener('click', e => {
+    if (e.target === e.currentTarget) fecharModal();
+  });
+  document.getElementById('modal-confirmar').addEventListener('click', e => {
+    if (e.target === e.currentTarget) fecharConfirmar();
+  });
+
+  carregarAlunos();
+</script>
+</body>
+</html>
